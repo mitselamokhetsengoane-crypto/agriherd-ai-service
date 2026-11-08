@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+tests/
+datasets/
+notebooks/
+*.ipynb
+.env
+.venv
+venv/
