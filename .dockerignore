@@ -10,3 +10,4 @@ notebooks/
 .env
 .venv
 venv/
+weights/

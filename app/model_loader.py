@@ -14,22 +14,15 @@ _model = None
 _load_lock = threading.Lock()
 
 class ModelUnavailable(RuntimeError):
-    """Raised when the model file is missing or fails to load."""
     pass
 
 def get_model():
-    """
-    Lazy loads the YOLO model. Reuses the instance for all subsequent calls.
-    """
     global _model
 
-    # Fast path: if already loaded, return immediately (no lock needed)
     if _model is not None:
         return _model
 
-    # Slow path: acquire lock so only ONE thread loads the model
     with _load_lock:
-        # Double-check in case another thread loaded it while we waited for the lock
         if _model is not None:
             return _model
 
@@ -41,7 +34,6 @@ def get_model():
             logger.info("Loading YOLO model into memory...")
             start_time = time.time()
             
-            # Load the model
             _model = YOLO(str(WEIGHTS_PATH))
             
             load_time = round(time.time() - start_time, 2)
