@@ -10,8 +10,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ /app/app/
+COPY weights/ /app/weights/
 
-# MODEL_URL is required at runtime. MODEL_SHA256 recommended.
+# MODEL_URL is an optional fallback if weights/best.pt is missing.
 ENV PORT=8000
 ENV MODEL_URL=""
 
