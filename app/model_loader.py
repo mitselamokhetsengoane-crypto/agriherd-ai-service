@@ -5,18 +5,21 @@ import logging
 import threading
 import urllib.request
 import urllib.error
+import joblib
 from pathlib import Path
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
 WEIGHTS_DIR = Path(__file__).resolve().parent.parent / "weights"
-WEIGHTS_PATH = WEIGHTS_DIR / "best.pt"
+DISEASE_MODEL_PATH = WEIGHTS_DIR / "best.pt"
+SALES_MODEL_PATH = WEIGHTS_DIR / "agriherd_sales_model.pkl"
 
 MODEL_URL = os.getenv("MODEL_URL", "").strip()
 MODEL_SHA256 = os.getenv("MODEL_SHA256", "").strip().lower()
 
-_model = None
+_disease_model = None
+_sales_model = None
 _load_lock = threading.Lock()
 _last_load_error = None
 
@@ -49,12 +52,12 @@ def _compute_sha256(path: Path) -> str:
 
 
 def _download_model():
-    """Download model from MODEL_URL to WEIGHTS_PATH safely with verification."""
+    """Download model from MODEL_URL to DISEASE_MODEL_PATH safely with verification."""
     if not MODEL_URL:
         raise ModelUnavailable("MODEL_URL environment variable is not set.")
 
     WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
-    tmp_path = WEIGHTS_PATH.with_suffix(".tmp")
+    tmp_path = DISEASE_MODEL_PATH.with_suffix(".tmp")
 
     logger.info(f"Downloading model from {MODEL_URL[:60]}...")
     try:
@@ -95,14 +98,14 @@ def _download_model():
     else:
         logger.warning("MODEL_SHA256 not set — skipping integrity verification.")
 
-    tmp_path.replace(WEIGHTS_PATH)
-    logger.info(f"Model installed at {WEIGHTS_PATH}")
+    tmp_path.replace(DISEASE_MODEL_PATH)
+    logger.info(f"Model installed at {DISEASE_MODEL_PATH}")
 
 
 def ensure_model_exists():
     global _last_load_error
-    if _is_valid_model_file(WEIGHTS_PATH):
-        logger.info("Model file already present and valid.")
+    if _is_valid_model_file(DISEASE_MODEL_PATH):
+        logger.info("Disease model file already present and valid.")
         return
 
     try:
@@ -114,34 +117,56 @@ def ensure_model_exists():
 
 
 def get_model():
-    global _model, _last_load_error
+    """Kept for backward compatibility with existing disease scanner logic."""
+    global _disease_model, _last_load_error
 
-    if _model is not None:
-        return _model
+    if _disease_model is not None:
+        return _disease_model
 
     with _load_lock:
-        if _model is not None:
-            return _model
+        if _disease_model is not None:
+            return _disease_model
 
         ensure_model_exists()
 
         try:
             logger.info("Loading YOLO model into memory...")
             start = time.time()
-            _model = YOLO(str(WEIGHTS_PATH))
-            logger.info(f"Model loaded in {round(time.time() - start, 2)}s")
+            _disease_model = YOLO(str(DISEASE_MODEL_PATH))
+            logger.info(f"Disease Model loaded in {round(time.time() - start, 2)}s")
             _last_load_error = None
-            return _model
+            return _disease_model
         except Exception as exc:
             _last_load_error = str(exc)
             logger.exception("Failed to load YOLO model.")
-            if WEIGHTS_PATH.exists():
-                WEIGHTS_PATH.unlink()
+            if DISEASE_MODEL_PATH.exists():
+                DISEASE_MODEL_PATH.unlink()
             raise ModelUnavailable(f"YOLO load failed: {exc}") from exc
 
 
+def get_sales_model():
+    """Loads the Scikit-Learn sales prediction model."""
+    global _sales_model
+    if _sales_model is not None:
+        return _sales_model
+
+    with _load_lock:
+        if _sales_model is not None:
+            return _sales_model
+        if not SALES_MODEL_PATH.is_file():
+            raise ModelUnavailable(f"Sales model file not found at {SALES_MODEL_PATH}")
+        try:
+            logger.info("Loading Sales model into memory...")
+            _sales_model = joblib.load(SALES_MODEL_PATH)
+            logger.info("Sales model loaded successfully.")
+            return _sales_model
+        except Exception as exc:
+            logger.exception("Failed to load Sales model.")
+            raise ModelUnavailable(f"Sales model load failed: {exc}") from exc
+
+
 def is_model_ready() -> bool:
-    return _model is not None
+    return _disease_model is not None
 
 
 def get_last_error():
